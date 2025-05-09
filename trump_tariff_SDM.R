@@ -150,10 +150,10 @@ data_2017 <- data_2017 %>%
 
 # Prepare spatial weight matrix
 
-# Contiguity (k-nearest neighbors, k = 6)
+# Contiguity (k-nearest neighbors, k = 5)
 coor_matrix <- st_as_sf(data_2017, coords = c("longitude", "latitude"), crs = 4326)
 coords <- st_coordinates(coor_matrix)
-knn_nb <- knearneigh(coor_matrix, k = 6)  # Create neighbors based on 6 nearest countries
+knn_nb <- knearneigh(coords, k = 5)  # Create neighbors based on 5 nearest countries
 knn_list <- knn2nb(knn_nb)
 W_knn <- nb2listw(knn_list, style = "W")
 
@@ -180,8 +180,9 @@ if(length(small_row_sums) > 0) {
 W_gdp <- mat2listw(gdp_inv_2017, style = "W")
 
 # Run basic OLS to get residuals
-ols_model <- lm(trade_bal ~ gdp_2017 + ahs_weighted, data = data_2017)
+ols_model <- lm(exp ~ gdp_2017 + ahs_weighted, data = data_2017)
 residuals_ols <- residuals(ols_model)
+summary(ols_model)
 
 # Moran's I test on OLS residuals
 moran.test(residuals_ols, W_knn)
@@ -200,20 +201,43 @@ lm.LMtests(ols_model, listw = W_gdp, test = "all")
 # 5. Estimate Spatial Models (SAR, SEM, SDM)
 # -------------------------------
 
-#
+# Scale data to avoid numerical stability of the model (failure in the inversion of the asymptotic covariance matrix)
+# Avoid problem with collinearity or redundancy in the data or the spatial structure
+vif(lm(form, data = data_2017))
 
-
-# Define formula
-form <- trade_bal ~ gdp_2017 + ahs_weighted
-
-# SDM with different weights
-sdm_knn <- lagsarlm(form, data = data_2017, listw = W_knn, type = "mixed")
-sdm_dist <- lagsarlm(form, data = data_2017, listw = W_dist, type = "mixed")
-sdm_gdp <- lagsarlm(form, data = data_2017, listw = W_gdp, type = "mixed")
-
-
+data_2017$trade_bal <- scale(data_2017$trade_bal)
+data_2017$exp <- scale(data_2017$exp)
 data_2017$gdp_2017 <- scale(data_2017$gdp_2017)
 data_2017$ahs_weighted <- scale(data_2017$ahs_weighted)
+
+# Alternatively, logging the data to avoid numerical stability of the model
+data_2017$log_exp <- log(data_2017$exp)
+
+# Scaling
+data_2017$gdp_2017_z <- scale(data_2017$gdp_2017)
+data_2017$ahs_weighted_z <- scale(data_2017$ahs_weighted)
+data_2017$log_exp_z <- scale(log(data_2017$exp))
+
+# Define formula
+form <- exp ~ ahs_weighted
+form_log <- log_exp ~ gdp_2017 + ahs_weighted
+form_std <- log_exp_z ~ gdp_2017_z + ahs_weighted_z
+
+# SDM with different weights
+sdm_knn <- lagsarlm(form_std, data = data_2017, listw = W_knn, type = "mixed")
+sdm_dist <- lagsarlm(form_std, data = data_2017, listw = W_dist, type = "mixed")
+sdm_gdp <- lagsarlm(form_std, data = data_2017, listw = W_gdp, type = "mixed")
+summary(sdm_knn)
+summary(sdm_dist)
+summary(sdm_gdp)
+
+# Compare with SAR
+sar_knn <- lagsarlm(form_std, data = data_2017, listw = W_knn)
+summary(sar_knn)
+
+# Compare with SEM
+sem_knn <- errorsarlm(form, data = data_2017, listw = W_knn)
+summary(sem_knn)
 
 # Extract spatial effects (direct, indirect, total)
 impacts <- impacts(sdm_model, listw = lw, R = 1000)  # Bootstrapping for inference

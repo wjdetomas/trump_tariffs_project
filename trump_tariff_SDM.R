@@ -11,7 +11,7 @@ setwd("~/Wilson John/learning programming/R/trump_tariffs_project")
 options(scipen = 999) #Turn Off Scientific Notation Globally
 
 # Load necessary libraries (uncomment line below if need to install pckgs)
-# install.packages(c("readxl", "dplyr", "spdep", "spatialreg", "sf", "rgdal", "writexl", "ggplot2", "ggmap","fuzzyjoin","stringr"))
+# Install.packages(c("readxl", "dplyr", "spdep", "spatialreg", "sf", "rgdal", "writexl", "ggplot2", "ggmap","fuzzyjoin","stringr","car"))
 
 library(readxl)        # For reading Excel files
 library(dplyr)         # For data manipulation
@@ -22,10 +22,11 @@ library(ggplot2)       # For plotting
 library(writexl)       # For saving output
 library(fuzzyjoin)     # For name-matching or fuzzy-join routine (country name are slightly mismatched)
 library(stringr)       # Clean Whitespace from All Character Columns
+library(car)           # VIF
 
 #sessionInfo()
 
-# load trade balance data (in usd) for graphical
+# Load trade balance data (in usd) for graphical
 net_trade <- read_excel("data/API_BN.GSR.MRCH.CD_DS2_en_excel_v2_85628.xls",skip = 3)
 us_net_trade <- net_trade %>% 
   filter(`Country Name` == "United States")
@@ -62,7 +63,7 @@ ggplot(us_net_trade_t, aes(x = Year, y = XM)) +
        caption = "https://data.worldbank.org/indicator/BN.GSR.MRCH.CD?locations=US, accessed May 8, 2025") +
   theme_minimal()
 
-# load tariff rate data for graphical
+# Load tariff rate data for graphical
 tr <- read_excel("data/API_TM.TAX.MRCH.WM.AR.ZS_DS2_en_excel_v2_85076.xls",skip = 3)
 us_tr <- tr %>% 
   filter(`Country Name` == "United States")
@@ -93,10 +94,10 @@ ggplot(us_net_trade_t, aes(x = Year, y = XM)) +
 
 rm("pres_term_df","presidents","president")
 
-# import GDP (in usd)
+# Import GDP (in usd)
 gdp_data <- read_excel("data/gdp_clean_rev00.xlsx", skip = 0)
 
-# segregate gdp per year
+# Segregate gdp per year
 for (year in 2017:2019) {
   year_col <- as.character(year)
   gdp_year <- gdp_data[,c("country_name",year)]
@@ -106,24 +107,12 @@ for (year in 2017:2019) {
 rm("year","year_col","gdp_year")
 
 
-# upload tariff rate and trade flow (in usd)
+# Upload tariff rate and trade flow (in usd)
 for (year in 2017:2019) {
   file_name <- paste0("data/tr_xm_",year,"_clean.xlsx")
   
   # Read the sheet 'Partner' into a data frame, col_types argument is used to remove unneeded columns
-  trxm_year <- read_excel(file_name, sheet = "Partner",col_types = c("text","text","numeric",
-                                                                     "text", "skip","skip",
-                                                                     "skip", "skip","numeric",
-                                                                     "numeric","numeric","skip",
-                                                                     "skip","numeric","numeric",
-                                                                     "skip","skip","skip",
-                                                                     "skip","skip","skip",
-                                                                     "skip","skip","skip",
-                                                                     "skip","numeric","numeric",
-                                                                     "skip","skip","skip",
-                                                                     "skip","skip","skip",
-                                                                     "skip","skip","skip",
-                                                                     "skip","numeric"))
+  trxm_year <- read_excel(file_name, sheet = "Partner")
   
   # Dynamically assign each year's data to a variable
   assign(paste0("trxm_", year), trxm_year)
@@ -135,18 +124,19 @@ rm("year","file_name","trxm_year")
 # merge gdp and trxm, full join to keep all data
 gdp_trxm_2017 <- full_join(
   trxm_2017, gdp_2017,
-  by = c("Partner Name" = "Country Name")
-  )
+  by = "country_name")
+
+colnames(gdp_trxm_2017)[length(colnames(gdp_trxm_2017))] <- "gdp_2017"
 
 # Rows where GDP data is missing
-missing_gdp_2017 <- gdp_trxm_2017 %>% filter(is.na(`2017`))
+missing_gdp_2017 <- gdp_trxm_2017 %>% filter(is.na(`gdp_2017`))
 
 # Rows where trade data is missing
-missing_trade_2017 <- gdp_trxm_2017 %>% filter(is.na(`Trade Flow`))
+missing_trade_2017 <- gdp_trxm_2017 %>% filter(is.na(`trade_bal`))
 
 # Remove Unmatched Rows
 gdp_trxm_2017 <- gdp_trxm_2017 %>%
-  filter(!is.na(`2017`) & !is.na(`Trade Flow`))
+  filter(!is.na(`gdp_2017`) & !is.na(`trade_bal`))
 
 
 # Trying Fuzzy join Partner Name (trade) to Country Name (GDP) to increase obs.
@@ -156,71 +146,83 @@ fuzzy_gdp_trxm_2017 <- stringdist_left_join(
   method = "jw",     # Jaro-Winkler distance (good for short strings)
   max_dist = 0.11,    # Tolerance (adjust between 0.1–0.3 if needed)
   distance_col = "dist"
-)
-
-# View highest distance (worst match) and inspect before filtering
-fuzzy_gdp_trxm_2017 %>%
-  arrange(desc(dist)) %>%
-  select(`Partner Name`, `Country Name`, dist) %>%
-  head(100)
-
-# Keep matches with a good similarity score
-clean_gdp_trxm_2017 <- fuzzy_gpd_trxm_2017 %>%
-  filter(!is.na(`2017`) & dist < 0.11)
-
-# outcome from fuzzy join might be ambiguous like interchanging Ireland and Iceland
-# will use previous merged data set
+  )
 
 # Add country coordinates for spatial matrix
-geo_coor <- read_excel("data/geo_dist_per_country.xls")
-data_2017 <- gdp_trxm_2017 %>% left_join(geo_coor, by = c("Partner Name" = "country"))
+geo_coor <- read_excel("data/geo_data_clean_rev01.xlsx")
+data_2017 <- gdp_trxm_2017 %>% left_join(geo_coor, by = "country_name")
 
-
-# Update values and column names
-colnames(data_2017)[5] <- "trade_bal"
-data_2017$trade_bal <- data_2017$trade_bal * 1000
-colnames(data_2017)[7] <- "trade_imp"
-data_2017$trade_imp <- data_2017$trade_imp * 1000
-colnames(data_2017)[13] <- "gdp_2017"
-colnames(data_2017)[8] <- "ahs_tr"
 
 # Clean NA's
 data_2017 <- data_2017 %>% 
-  filter(!is.na(`lat`) & !is.na(`lon`))
+  filter(!is.na(`latitude`) & !is.na(`longitude`))
 
 # Prepare spatial weight matrix
 
-# Contiguity (k-nearest neighbors, k = 5)
-coor_matrix <- st_as_sf(data_2017, coords = c("lon", "lat"), crs = 4326)
-nb <- knn2nb(knearneigh(st_coordinates(geo_coor_sf), k = 5))  # Create neighbors based on 5 nearest countries
-lw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+# Contiguity (k-nearest neighbors, k = 6)
+coor_matrix <- st_as_sf(data_2017, coords = c("longitude", "latitude"), crs = 4326)
+coords <- st_coordinates(coor_matrix)
+knn_nb <- knearneigh(coor_matrix, k = 6)  # Create neighbors based on 6 nearest countries
+knn_list <- knn2nb(knn_nb)
+W_knn <- nb2listw(knn_list, style = "W")
 
 # Distance-based weights (inverse distance)
-dist_matrix <- as.matrix(dist(coords_matrix))
+dist_matrix <- as.matrix(dist(coords))
 dist_inv <- 1 / dist_matrix
 diag(dist_inv) <- 0  # remove self-weight
 W_dist <- mat2listw(dist_inv, style = "W")
 
-# Convert to spatial data frame
-data_2017$log_trade <- log(data_2017$trade_imp + 1)
-data_2017$log_gdp <- log(data_2017$gdp_2017 + 1)
+# Economic proximity (GDP similarity)
+gdp_dist_2017 <- dist(data_2017$gdp_2017)
+gdp_inv_2017 <- 1 / as.matrix(gdp_dist_2017)
+diag(gdp_inv_2017) <- 0
 
-# Run Moran’s I test on trade to detect spatial autocorrelation
-moran_test <- moran.test(data_2017$log_trade, listw = lw)
-print(moran_test)
+# Ensure no zero distances (if any distance is zero, set it to a small value)
+gdp_inv_2017[gdp_inv_2017 < 1e-10] <- 1e-10
+row_sums <- rowSums(gdp_inv_2017)
+small_row_sums <- which(abs(row_sums) < 1e-10)
+if(length(small_row_sums) > 0) {
+  gdp_inv_2017[small_row_sums, ] <- 1e-10  # Replace entire rows with small value if necessary
+}
 
-# Fit OLS model as baseline
-ols_model <- lm(log_trade ~ log_gdp + ahs_tr, data = data_2017)
-summary(ols_model)
+# Compute the GDP spatial weight matrix 
+W_gdp <- mat2listw(gdp_inv_2017, style = "W")
 
-# Run Lagrange Multiplier tests to justify spatial model
-lm_tests <- lm.LMtests(ols_model, listw = lw, test = "all")
-print(lm_tests)
+# Run basic OLS to get residuals
+ols_model <- lm(trade_bal ~ gdp_2017 + ahs_weighted, data = data_2017)
+residuals_ols <- residuals(ols_model)
 
-# Fit Spatial Durbin Model (SDM)
-sdm_model <- lagsarlm(log_trade ~ log_gdp + ahs_tr, data = data_2017, listw = lw,
-                      type = "mixed", method = "eigen", zero.policy = TRUE)
-summary(sdm_model)
+# Moran's I test on OLS residuals
+moran.test(residuals_ols, W_knn)
+moran.test(residuals_ols, W_dist)
+moran.test(residuals_ols, W_gdp)
+
+# -------------------------------
+# 4. Lagrange Multiplier Tests
+# -------------------------------
+
+lm.LMtests(ols_model, listw = W_knn, test = "all")
+lm.LMtests(ols_model, listw = W_dist, test = "all")
+lm.LMtests(ols_model, listw = W_gdp, test = "all")
+
+# -------------------------------
+# 5. Estimate Spatial Models (SAR, SEM, SDM)
+# -------------------------------
+
+#
+
+
+# Define formula
+form <- trade_bal ~ gdp_2017 + ahs_weighted
+
+# SDM with different weights
+sdm_knn <- lagsarlm(form, data = data_2017, listw = W_knn, type = "mixed")
+sdm_dist <- lagsarlm(form, data = data_2017, listw = W_dist, type = "mixed")
+sdm_gdp <- lagsarlm(form, data = data_2017, listw = W_gdp, type = "mixed")
+
+
+data_2017$gdp_2017 <- scale(data_2017$gdp_2017)
+data_2017$ahs_weighted <- scale(data_2017$ahs_weighted)
 
 # Extract spatial effects (direct, indirect, total)
 impacts <- impacts(sdm_model, listw = lw, R = 1000)  # Bootstrapping for inference

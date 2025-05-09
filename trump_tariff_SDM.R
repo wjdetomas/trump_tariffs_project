@@ -97,7 +97,7 @@ rm("pres_term_df","presidents","president")
 # Import GDP (in usd)
 gdp_data <- read_excel("data/gdp_clean_rev00.xlsx", skip = 0)
 
-# Segregate gdp per year
+# Extract 2017 to 2019
 for (year in 2017:2019) {
   year_col <- as.character(year)
   gdp_year <- gdp_data[,c("country_name",year)]
@@ -138,15 +138,6 @@ missing_trade_2017 <- gdp_trxm_2017 %>% filter(is.na(`trade_bal`))
 gdp_trxm_2017 <- gdp_trxm_2017 %>%
   filter(!is.na(`gdp_2017`) & !is.na(`trade_bal`))
 
-
-# Trying Fuzzy join Partner Name (trade) to Country Name (GDP) to increase obs.
-fuzzy_gdp_trxm_2017 <- stringdist_left_join(
-  trxm_2017, gdp_2017,
-  by = c("Partner Name" = "Country Name"),
-  method = "jw",     # Jaro-Winkler distance (good for short strings)
-  max_dist = 0.11,    # Tolerance (adjust between 0.1–0.3 if needed)
-  distance_col = "dist"
-  )
 
 # Add country coordinates for spatial matrix
 geo_coor <- read_excel("data/geo_data_clean_rev01.xlsx")

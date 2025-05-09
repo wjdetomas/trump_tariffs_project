@@ -240,15 +240,15 @@ sem_knn <- errorsarlm(form, data = data_2017, listw = W_knn)
 summary(sem_knn)
 
 # Extract spatial effects (direct, indirect, total)
-impacts <- impacts(sdm_model, listw = lw, R = 1000)  # Bootstrapping for inference
+impacts <- impacts(sdm_gdp, listw = W_gdp, R = 1000)  # Bootstrapping for inference
 summary(impacts)
 
 # Save results
 write_xlsx(data_2017, "data/data_2017.xlsx")
-saveRDS(sdm_model, "SDM_model_result.rds")
+saveRDS(sdm_gdp, "SDM_model_result.rds")
 
 # Visual check of residuals
-data_2017$resid <- residuals(sdm_model)
-ggplot(merged_data, aes(x = lon, y = lat, fill = resid)) +
+data_2017$resid <- residuals(sdm_gdp)
+ggplot(data_2017, aes(x = longitude, y = latitude, fill = resid)) +
   geom_tile() + theme_minimal() + scale_fill_gradient2() +
   labs(title = "Spatial Distribution of SDM Residuals")

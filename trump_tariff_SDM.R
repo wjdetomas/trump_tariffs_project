@@ -12,7 +12,7 @@ options(scipen = 999) #Turn Off Scientific Notation Globally
 
 # Load necessary libraries (uncomment line below if need to install pckgs)
 # Install.packages(c("readxl", "dplyr", "spdep", "spatialreg", "sf", "rgdal", "writexl", "ggplot2",
-                      "ggmap", "fuzzyjoin", "stringr", "car", "stargazer"))
+#                      "ggmap", "fuzzyjoin", "stringr", "car", "stargazer"))
 
 library(readxl)        # For reading Excel files
 library(dplyr)         # For data manipulation
@@ -176,11 +176,11 @@ W_knn <- nb2listw(knn_list, style = "W")
 
 # Run basic OLS to get residuals
 ols_model <- lm(trade_bal ~ ahs_weighted, data = data_2017)
-residuals_ols <- residuals(ols_model)
+residuals_ols_2017 <- residuals(ols_model)
 summary(ols_model)
 
 # Moran's I test on OLS residuals
-moran.test(residuals_ols, W_knn)
+moran.test(residuals_ols_2017, W_knn)
 
 # Lagrange Multiplier Tests
 lm.LMtests(ols_model, listw = W_knn, test = "all")
@@ -191,17 +191,9 @@ lm.LMtests(ols_model, listw = W_knn, test = "all")
 # Avoid problem with collinearity or redundancy in the data or the spatial structure
 vif(lm(form, data = data_2017))
 data_2017$trade_bal <- scale(data_2017$trade_bal)
-data_2017$exp <- scale(data_2017$exp)
-data_2017$gdp_2017 <- scale(data_2017$gdp_2017)
 data_2017$ahs_weighted <- scale(data_2017$ahs_weighted)
-
-# Alternatively, logging the data to avoid numerical stability of the model
-data_2017$log_exp <- log(data_2017$exp)
-
-# Scaling
 data_2017$gdp_2017_z <- scale(data_2017$gdp_2017)
-data_2017$ahs_weighted_z <- scale(data_2017$ahs_weighted)
-data_2017$log_exp_z <- scale(log(data_2017$exp))
+
 
 # Define formula
 form <- trade_bal ~ ahs_weighted
@@ -234,8 +226,8 @@ lm.LMtests(gdp_ols_model, listw = W_knn, test = "all")
 form_gdp <- gdp_2017_z ~ ahs_weighted
 
 # SDM with different weights
-sdm_knn <- lagsarlm(form_gdp, data = data_2017, listw = W_knn, type = "mixed")
-summary(sdm_knn)
+sdm_knn_gdp <- lagsarlm(form_gdp, data = data_2017, listw = W_knn, type = "mixed")
+summary(sdm_knn_gdp)
 
 
 # ====2018=====
@@ -272,76 +264,61 @@ data_2018 <- data_2018 %>%
 
 # Prepare spatial weight matrix
 # Contiguity (k-nearest neighbors, k = 5)
-coor_matrix <- st_as_sf(data_2018, coords = c("longitude", "latitude"), crs = 4326)
-coords <- st_coordinates(coor_matrix)
-knn_nb <- knearneigh(coords, k = 5)  # Create neighbors based on 5 nearest countries
-knn_list <- knn2nb(knn_nb)
-W_knn <- nb2listw(knn_list, style = "W")
+coor_matrix_2018 <- st_as_sf(data_2018, coords = c("longitude", "latitude"), crs = 4326)
+coords_2018 <- st_coordinates(coor_matrix_2018)
+knn_nb_2018 <- knearneigh(coords_2018, k = 5)  # Create neighbors based on 5 nearest countries
+knn_list_2018 <- knn2nb(knn_nb_2018)
+W_knn_2018 <- nb2listw(knn_list_2018, style = "W")
 
 # Run basic OLS to get residuals
-ols_model <- lm(trade_bal ~ ahs_weighted, data = data_2018)
-residuals_ols <- residuals(ols_model)
-summary(ols_model)
+ols_model_2018 <- lm(trade_bal ~ ahs_weighted, data = data_2018)
+residuals_ols_2018 <- residuals(ols_model_2018)
+summary(ols_model_2018)
 
 # Moran's I test on OLS residuals
-moran.test(residuals_ols, W_knn)
+moran.test(residuals_ols_2018, W_knn_2018)
 
 # Lagrange Multiplier Tests
-lm.LMtests(ols_model, listw = W_knn, test = "all")
+lm.LMtests(ols_model_2018, listw = W_knn_2018, test = "all")
 
 # Estimate Spatial Models (SAR, SEM, SDM)
 # Scale data to avoid numerical stability of the model (failure in the inversion of the asymptotic covariance matrix)
 # Avoid problem with collinearity or redundancy in the data or the spatial structure
 vif(lm(form, data = data_2018))
-
 data_2018$trade_bal <- scale(data_2018$trade_bal)
-data_2018$exp <- scale(data_2018$exp)
-data_2018$gdp_2018 <- scale(data_2018$gdp_2018)
-data_2018$ahs_weighted <- scale(data_2018$ahs_weighted)
-
-# Alternatively, logging the data to avoid numerical stability of the model
-data_2018$log_exp <- log(data_2018$exp)
-
-# Scaling
 data_2018$gdp_2018_z <- scale(data_2018$gdp_2018)
 data_2018$ahs_weighted_z <- scale(data_2018$ahs_weighted)
-data_2018$log_exp_z <- scale(log(data_2018$exp))
+
 
 # Define formula
 form <- trade_bal ~ ahs_weighted
 
 # SDM with different weights
-sdm_knn <- lagsarlm(form, data = data_2018, listw = W_knn, type = "mixed")
-summary(sdm_knn)
-
-# Compare with SAR
-sar_knn <- lagsarlm(form, data = data_2018, listw = W_knn)
-summary(sar_knn)
-
-# Compare with SEM
-sem_knn <- errorsarlm(form, data = data_2018, listw = W_knn)
-summary(sem_knn)
+sdm_knn_2018 <- lagsarlm(form, data = data_2018, listw = W_knn_2018, type = "mixed")
+summary(sdm_knn_2018)
 
 # -----------------test for gdp and ahs tariff---------------------------
 # Run basic OLS to get residuals
-gdp_ols_model <- lm(gdp_2018_z ~ ahs_weighted, data = data_2018)
-gdp_residuals_ols <- residuals(gdp_ols_model)
-summary(gdp_ols_model)
+gdp_ols_model_2018 <- lm(gdp_2018_z ~ ahs_weighted, data = data_2018)
+gdp_residuals_ols_2018 <- residuals(gdp_ols_model_2018)
+summary(gdp_ols_model_2018)
 
 # Moran's I test on OLS residuals
-moran.test(gdp_residuals_ols, W_knn)
+moran.test(gdp_residuals_ols_2018, W_knn_2018)
 
 # Lagrange Multiplier Tests
-lm.LMtests(gdp_ols_model, listw = W_knn, test = "all")
+lm.LMtests(gdp_ols_model_2018, listw = W_knn_2018, test = "all")
 
 # Define formula
 form_gdp <- gdp_2018_z ~ ahs_weighted
 
 # SDM with different weights
-sdm_knn <- lagsarlm(form_gdp, data = data_2018, listw = W_knn, type = "mixed")
-summary(sdm_knn)
+sdm_knn_gdp_2018 <- lagsarlm(form_gdp, data = data_2018, listw = W_knn_2018, type = "mixed")
+summary(sdm_knn_gdp_2018)
+
 
 # ====2019=====
+
 
 # merge gdp and trxm, full join to keep all data
 gdp_trxm_2019 <- full_join(
@@ -375,46 +352,36 @@ data_2019 <- data_2019 %>%
 
 # Prepare spatial weight matrix
 # Contiguity (k-nearest neighbors, k = 5)
-coor_matrix <- st_as_sf(data_2019, coords = c("longitude", "latitude"), crs = 4326)
-coords <- st_coordinates(coor_matrix)
-knn_nb <- knearneigh(coords, k = 5)  # Create neighbors based on 5 nearest countries
-knn_list <- knn2nb(knn_nb)
-W_knn <- nb2listw(knn_list, style = "W")
+coor_matrix_2019 <- st_as_sf(data_2019, coords = c("longitude", "latitude"), crs = 4326)
+coords_2019 <- st_coordinates(coor_matrix_2019)
+knn_nb_2019 <- knearneigh(coords_2019, k = 5)  # Create neighbors based on 5 nearest countries
+knn_list_2019 <- knn2nb(knn_nb_2019)
+W_knn_2019 <- nb2listw(knn_list_2019, style = "W")
 
 # Run basic OLS to get residuals
-ols_model <- lm(trade_bal ~ ahs_weighted, data = data_2019)
-residuals_ols <- residuals(ols_model)
-summary(ols_model)
+ols_model_2019 <- lm(trade_bal ~ ahs_weighted, data = data_2019)
+residuals_ols_2019 <- residuals(ols_model_2019)
+summary(ols_model_2019)
 
 # Moran's I test on OLS residuals
-moran.test(residuals_ols, W_knn)
+moran.test(residuals_ols_2019, W_knn_2019)
 
 # Lagrange Multiplier Tests
-lm.LMtests(ols_model, listw = W_knn, test = "all")
+lm.LMtests(ols_model_2019, listw = W_knn_2019, test = "all")
 
 # Estimate Spatial Models (SAR, SEM, SDM)
 # Scale data to avoid numerical stability of the model (failure in the inversion of the asymptotic covariance matrix)
 # Avoid problem with collinearity or redundancy in the data or the spatial structure
 vif(lm(form, data = data_2019))
-
 data_2019$trade_bal <- scale(data_2019$trade_bal)
-data_2019$exp <- scale(data_2019$exp)
-data_2019$gdp_2019 <- scale(data_2019$gdp_2019)
-data_2019$ahs_weighted <- scale(data_2019$ahs_weighted)
-
-# Alternatively, logging the data to avoid numerical stability of the model
-data_2019$log_exp <- log(data_2019$exp)
-
-# Scaling
 data_2019$gdp_2019_z <- scale(data_2019$gdp_2019)
 data_2019$ahs_weighted_z <- scale(data_2019$ahs_weighted)
-data_2019$log_exp_z <- scale(log(data_2019$exp))
 
 # Define formula
 form <- trade_bal ~ ahs_weighted
 
 # SDM with different weights
-sdm_knn <- lagsarlm(form, data = data_2019, listw = W_knn, type = "mixed")
+sdm_knn <- lagsarlm(form, data = data_2019, listw = W_knn_2019, type = "mixed")
 summary(sdm_knn)
 
 # Compare with SAR
@@ -427,19 +394,19 @@ summary(sem_knn)
 
 # -----------------test for gdp and ahs tariff---------------------------
 # Run basic OLS to get residuals
-gdp_ols_model <- lm(gdp_2019_z ~ ahs_weighted, data = data_2019)
-gdp_residuals_ols <- residuals(gdp_ols_model)
-summary(gdp_ols_model)
+gdp_ols_model_2019 <- lm(gdp_2019_z ~ ahs_weighted, data = data_2019)
+gdp_residuals_ols_2019 <- residuals(gdp_ols_model_2019)
+summary(gdp_ols_model_2019)
 
 # Moran's I test on OLS residuals
-moran.test(gdp_residuals_ols, W_knn)
+moran.test(gdp_residuals_ols_2019, W_knn_2019)
 
 # Lagrange Multiplier Tests
-lm.LMtests(gdp_ols_model, listw = W_knn, test = "all")
+lm.LMtests(gdp_ols_model_2019, listw = W_knn_2019, test = "all")
 
 # Define formula
 form_gdp <- gdp_2019_z ~ ahs_weighted
 
 # SDM with different weights
-sdm_knn <- lagsarlm(form_gdp, data = data_2019, listw = W_knn, type = "mixed")
-summary(sdm_knn)
+sdm_knn_gdp_2019 <- lagsarlm(form_gdp, data = data_2019, listw = W_knn_2019, type = "mixed")
+summary(sdm_knn_gdp_2019)
